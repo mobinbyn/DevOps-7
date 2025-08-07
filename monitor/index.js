@@ -62,6 +62,18 @@ for (const server of servers) {
     // check latency
     // set server.latency
     // set server.statusCode
+    
+    setInterval(async () => {
+        const start = Date.now();
+        try {
+            const res = await axios.get(server.url + ':' + server.port);
+            server.statusCode = res.status;
+            server.latency = Date.now() - start;
+        } catch (e) {
+            server.statusCode = 500;
+            server.latency = -1;
+        }
+    }, 3000);
 }
 
 
@@ -71,15 +83,27 @@ for (const server of servers) {
 
 // TODO:
 function updateHealth(server) {
+    // let score = 0;
+    // // Update score calculation.
+
+    // server.status = score2color(score / 4);
+
+    // // console.log(`${server.name} ${score}`);
+    // console.log(server.scoreTrend)
+
+    // // Add score to trend data.
+    // server.scoreTrend.push((4 - score));
+    // if (server.scoreTrend.length > 100) {
+    //     server.scoreTrend.shift();
+    // }
+    
     let score = 0;
-    // Update score calculation.
+    if (server.cpuLoad > 75) score++;
+    if (server.memoryLoad > 75) score++;
+    if (server.latency > 500 || server.latency === -1) score++;
+    if (server.statusCode !== 200) score++;
 
     server.status = score2color(score / 4);
-
-    // console.log(`${server.name} ${score}`);
-    console.log(server.scoreTrend)
-
-    // Add score to trend data.
     server.scoreTrend.push((4 - score));
     if (server.scoreTrend.length > 100) {
         server.scoreTrend.shift();
