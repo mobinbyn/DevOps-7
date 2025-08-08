@@ -50,34 +50,34 @@ class Agent {
         // 3. store and calculate time since last time cpuLoad() was called (you can store timestamps from Date.now() and calculate the time difference)
         // 4. calculate the cpu load percentage as (usage_usec changes since last run / time since last run in seconds) * 100
         
-        try {
-            let currentUsage, usageInSeconds;
+       try {
+            let currentUsage;
 
-            if (fs.existsSync('/sys/fs/cgroup/cpu/cpuacct.usage')) {
-                currentUsage = parseInt(await fsPromises.readFile('/sys/fs/cgroup/cpu/cpuacct.usage', 'utf8'));
-                usageInSeconds = currentUsage / 1_000_000_000; // from nanoseconds to seconds
-            } else if (fs.existsSync('/sys/fs/cgroup/cpu.stat')) {
-                const statStr = await fsPromises.readFile('/sys/fs/cgroup/cpu.stat', 'utf8');
-                const usageLine = statStr.split('\n').find(line => line.startsWith('usage_usec'));
-                currentUsage = parseInt(usageLine.split(' ')[1]);
-                usageInSeconds = currentUsage / 1_000_000; // from microseconds to seconds
+            // cgroup v1: cpuacct
+            const cpuacctUsagePath = '/sys/fs/cgroup/cpuacct/cpuacct.usage';
+            if (fs.existsSync(cpuacctUsagePath)) {
+                const usageStr = await fs.readFile(cpuacctUsagePath, 'utf8');
+                currentUsage = parseInt(usageStr);
+                if (isNaN(currentUsage)) {
+                    throw new Error('cpuacct.usage is not a number');
+                }
+                currentUsage = currentUsage / 1000; // convert nanoseconds to microseconds
             } else {
+                // اگر این فایل نبود، میشه از روش‌های دیگه استفاده کرد یا -1 برگردوند
                 return -1;
             }
 
-            const currentTime = Date.now() / 1000; // seconds
-            const usageDelta = usageInSeconds - (this.lastCpuUsage || 0);
-            const timeDelta = currentTime - (this.lastCpuCheck || currentTime);
+            const currentTime = Date.now();
+            const usageDelta = currentUsage - (this.lastCpuUsage || 0);
+            const timeDelta = (currentTime - (this.lastCpuCheck || currentTime)) / 1000; // seconds
 
-            this.lastCpuUsage = usageInSeconds;
+            this.lastCpuUsage = currentUsage;
             this.lastCpuCheck = currentTime;
 
             if (timeDelta === 0) return 0;
 
-            // CPU load in percentage (normalized to one CPU)
-            const cpuLoad = (usageDelta / timeDelta) * 100;
-            return parseFloat(cpuLoad.toFixed(2));
-
+            // usageDelta: میکروثانیه CPU مصرف شده، تقسیم بر ثانیه زمان میده درصد مصرف
+            return parseFloat(((usageDelta / 10000) / timeDelta).toFixed(2)); // تبدیل به درصد CPU
         } catch (err) {
             console.error('Failed to read CPU info:', err);
             return -1;
