@@ -51,30 +51,33 @@ class Agent {
         // 4. calculate the cpu load percentage as (usage_usec changes since last run / time since last run in seconds) * 100
         
         try {
-            let currentUsage;
+            let currentUsage, usageInSeconds;
 
-            // cgroup v1
             if (fs.existsSync('/sys/fs/cgroup/cpu/cpuacct.usage')) {
-                currentUsage = parseInt(await fs.readFile('/sys/fs/cgroup/cpu/cpuacct.usage', 'utf8')) / 1000; // to microseconds
-            }
-            // cgroup v2
-            else if (fs.existsSync('/sys/fs/cgroup/cpu.stat')) {
+                currentUsage = parseInt(await fsPromises.readFile('/sys/fs/cgroup/cpu/cpuacct.usage', 'utf8'));
+                usageInSeconds = currentUsage / 1_000_000_000; // from nanoseconds to seconds
+            } else if (fs.existsSync('/sys/fs/cgroup/cpu.stat')) {
                 const statStr = await fsPromises.readFile('/sys/fs/cgroup/cpu.stat', 'utf8');
                 const usageLine = statStr.split('\n').find(line => line.startsWith('usage_usec'));
                 currentUsage = parseInt(usageLine.split(' ')[1]);
+                usageInSeconds = currentUsage / 1_000_000; // from microseconds to seconds
             } else {
                 return -1;
             }
 
-            const currentTime = Date.now();
-            const usageDelta = currentUsage - (this.lastCpuUsage || 0);
-            const timeDelta = (currentTime - (this.lastCpuCheck || currentTime)) / 1000; // seconds
+            const currentTime = Date.now() / 1000; // seconds
+            const usageDelta = usageInSeconds - (this.lastCpuUsage || 0);
+            const timeDelta = currentTime - (this.lastCpuCheck || currentTime);
 
-            this.lastCpuUsage = currentUsage;
+            this.lastCpuUsage = usageInSeconds;
             this.lastCpuCheck = currentTime;
 
             if (timeDelta === 0) return 0;
-            return parseFloat(((usageDelta / 1000) / timeDelta).toFixed(2)); // %
+
+            // CPU load in percentage (normalized to one CPU)
+            const cpuLoad = (usageDelta / timeDelta) * 100;
+            return parseFloat(cpuLoad.toFixed(2));
+
         } catch (err) {
             console.error('Failed to read CPU info:', err);
             return -1;
