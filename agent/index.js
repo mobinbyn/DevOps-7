@@ -56,7 +56,7 @@ class Agent {
             // cgroup v1: cpuacct
             const cpuacctUsagePath = '/sys/fs/cgroup/cpuacct/cpuacct.usage';
             if (fs.existsSync(cpuacctUsagePath)) {
-                const usageStr = await fs.readFile(cpuacctUsagePath, 'utf8');
+                const usageStr = await fsPromises.readFile(cpuacctUsagePath, 'utf8');
                 currentUsage = parseInt(usageStr);
                 if (isNaN(currentUsage)) {
                     throw new Error('cpuacct.usage is not a number');
