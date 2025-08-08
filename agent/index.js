@@ -64,6 +64,7 @@ class Agent {
                 currentUsage = currentUsage / 1000; // convert nanoseconds to microseconds
             } else {
                 // اگر این فایل نبود، میشه از روش‌های دیگه استفاده کرد یا -1 برگردوند
+                console.error('cpuacct.usage not found');
                 return -1;
             }
 
@@ -74,6 +75,7 @@ class Agent {
             this.lastCpuUsage = currentUsage;
             this.lastCpuCheck = currentTime;
 
+            console.log(`CPU usage: ${usageDelta} microseconds over ${timeDelta} seconds`);
             if (timeDelta === 0) return 0;
 
             // usageDelta: میکروثانیه CPU مصرف شده، تقسیم بر ثانیه زمان میده درصد مصرف
