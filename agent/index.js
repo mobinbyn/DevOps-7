@@ -10,48 +10,60 @@ class Agent {
     
     async memoryLoad() {
         // Calculate memory load
+        // see:
+        // /sys/fs/cgroup/memory.current
+        // /sys/fs/cgroup/memory.max
         
         try {
-            // see:
-            // /sys/fs/cgroup/memory.current
-            // /sys/fs/cgroup/memory.max
-            const memCurrentStr = await fs.readFile('/sys/fs/cgroup/memory.current', 'utf8');
-            const memMaxStr = await fs.readFile('/sys/fs/cgroup/memory.max', 'utf8');
+            const used = parseInt(fs.readFileSync('/sys/fs/cgroup/memory/memory.usage_in_bytes', 'utf8'));
+            const limit = parseInt(fs.readFileSync('/sys/fs/cgroup/memory/memory.limit_in_bytes', 'utf8'));
 
-            const memCurrent = parseInt(memCurrentStr.trim());
-            const memMax = memMaxStr.trim() === 'max' ? memCurrent : parseInt(memMaxStr.trim());
+            // اگر limit خیلی بزرگ بود (unlimited)، می‌تونیم بجای اون از کل حافظه سیستم استفاده کنیم
+            if (limit > 1e15) { // یعنی unlimited
+            const os = require('os');
+            return Math.round((used / os.totalmem()) * 100);
+            }
 
-            const usage = (memCurrent / memMax) * 100;
-            return parseFloat(usage.toFixed(2));
+            return Math.round((used / limit) * 100);
         } catch (err) {
-            console.error('Failed to read memory info:', err);
-            return 0;
+            console.error('Error reading memory usage:', err);
+            return -1;
         }
 
     }
 
     async cpuLoad() {
         // Calculate cpu load
+        // to calculate CPU load:
+        // 1. read usage_usec value from /sys/fs/cgroup/cpu.stat this is cpu time in microseconds
+        // 2. store usage_usec on each run of cpuLoad() and calculate how much is increased since last run (you can store it in this.lastCpuUsage)
+        // 3. store and calculate time since last time cpuLoad() was called (you can store timestamps from Date.now() and calculate the time difference)
+        // 4. calculate the cpu load percentage as (usage_usec changes since last run / time since last run in seconds) * 100
         
         try {
-            // to calculate CPU load:
-            // 1. read usage_usec value from /sys/fs/cgroup/cpu.stat this is cpu time in microseconds
-            // 2. store usage_usec on each run of cpuLoad() and calculate how much is increased since last run (you can store it in this.lastCpuUsage)
-            // 3. store and calculate time since last time cpuLoad() was called (you can store timestamps from Date.now() and calculate the time difference)
-            // 4. calculate the cpu load percentage as (usage_usec changes since last run / time since last run in seconds) * 100
-            const statStr = await fs.readFile('/sys/fs/cgroup/cpu.stat', 'utf8');
-            const usageLine = statStr.split('\n').find(line => line.startsWith('usage_usec'));
+            // مسیر درست برای گرفتن مصرف CPU
+            const usageStr = await fs.readFile('/sys/fs/cgroup/cpuacct/cpuacct.usage', 'utf8');
+            const currentUsage = parseInt(usageStr.trim()); // نانوثانیه
+            const currentTime = Date.now(); // میلی‌ثانیه
 
-            const currentUsage = parseInt(usageLine.split(' ')[1]); // microseconds
-            const currentTime = Date.now(); // milliseconds
+            // اگر بار اول هست که صدا زده میشه، فقط مقدار رو ذخیره کن
+            if (this.lastCpuUsage === undefined) {
+                this.lastCpuUsage = currentUsage;
+                this.lastCpuCheck = currentTime;
+                return 0; // چون داده قبلی نداریم
+            }
 
-            const usageDelta = currentUsage - this.lastCpuUsage;
-            const timeDelta = (currentTime - this.lastCpuCheck) / 1000; // convert ms to sec
+            const usageDelta = currentUsage - this.lastCpuUsage; // نانوثانیه
+            const timeDelta = (currentTime - this.lastCpuCheck) / 1000; // به ثانیه
 
             this.lastCpuUsage = currentUsage;
             this.lastCpuCheck = currentTime;
 
-            const cpuPercent = (usageDelta / 1000) / timeDelta; // because usage_usec is in microseconds
+            // تعداد هسته‌های CPU
+            const numCPUs = os.cpus().length;
+
+            // درصد مصرف CPU
+            const cpuPercent = (usageDelta / 1e9 / timeDelta / numCPUs) * 100;
 
             return parseFloat(cpuPercent.toFixed(2));
         } catch (err) {
