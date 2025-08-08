@@ -13,20 +13,29 @@ class Agent {
         // see:
         // /sys/fs/cgroup/memory.current
         // /sys/fs/cgroup/memory.max
-        
         try {
-            const used = parseInt(fs.readFileSync('/sys/fs/cgroup/memory/memory.usage_in_bytes', 'utf8'));
-            const limit = parseInt(fs.readFileSync('/sys/fs/cgroup/memory/memory.limit_in_bytes', 'utf8'));
+            let usage, limit;
 
-            // اگر limit خیلی بزرگ بود (unlimited)، می‌تونیم بجای اون از کل حافظه سیستم استفاده کنیم
-            if (limit > 1e15) { // یعنی unlimited
-            const os = require('os');
-            return Math.round((used / os.totalmem()) * 100);
+            // cgroup v1 paths
+            if (fs.existsSync('/sys/fs/cgroup/memory/memory.usage_in_bytes')) {
+                usage = parseInt(await fs.readFile('/sys/fs/cgroup/memory/memory.usage_in_bytes', 'utf8'));
+                limit = parseInt(await fs.readFile('/sys/fs/cgroup/memory/memory.limit_in_bytes', 'utf8'));
+            }
+            // cgroup v2 paths
+            else if (fs.existsSync('/sys/fs/cgroup/memory.current')) {
+                usage = parseInt(await fs.readFile('/sys/fs/cgroup/memory.current', 'utf8'));
+                limit = parseInt((await fs.readFile('/sys/fs/cgroup/memory.max', 'utf8')).trim());
+                if (isNaN(limit)) {
+                    // unlimited → use total system memory
+                    limit = os.totalmem();
+                }
+            } else {
+                return -1;
             }
 
-            return Math.round((used / limit) * 100);
+            return parseFloat(((usage / limit) * 100).toFixed(2));
         } catch (err) {
-            console.error('Error reading memory usage:', err);
+            console.error('Failed to read memory info:', err);
             return -1;
         }
 
@@ -41,34 +50,33 @@ class Agent {
         // 4. calculate the cpu load percentage as (usage_usec changes since last run / time since last run in seconds) * 100
         
         try {
-            // مسیر درست برای گرفتن مصرف CPU
-            const usageStr = await fs.readFile('/sys/fs/cgroup/cpuacct/cpuacct.usage', 'utf8');
-            const currentUsage = parseInt(usageStr.trim()); // نانوثانیه
-            const currentTime = Date.now(); // میلی‌ثانیه
+            let currentUsage;
 
-            // اگر بار اول هست که صدا زده میشه، فقط مقدار رو ذخیره کن
-            if (this.lastCpuUsage === undefined) {
-                this.lastCpuUsage = currentUsage;
-                this.lastCpuCheck = currentTime;
-                return 0; // چون داده قبلی نداریم
+            // cgroup v1
+            if (fs.existsSync('/sys/fs/cgroup/cpu/cpuacct.usage')) {
+                currentUsage = parseInt(await fs.readFile('/sys/fs/cgroup/cpu/cpuacct.usage', 'utf8')) / 1000; // to microseconds
+            }
+            // cgroup v2
+            else if (fs.existsSync('/sys/fs/cgroup/cpu.stat')) {
+                const statStr = await fs.readFile('/sys/fs/cgroup/cpu.stat', 'utf8');
+                const usageLine = statStr.split('\n').find(line => line.startsWith('usage_usec'));
+                currentUsage = parseInt(usageLine.split(' ')[1]);
+            } else {
+                return -1;
             }
 
-            const usageDelta = currentUsage - this.lastCpuUsage; // نانوثانیه
-            const timeDelta = (currentTime - this.lastCpuCheck) / 1000; // به ثانیه
+            const currentTime = Date.now();
+            const usageDelta = currentUsage - (this.lastCpuUsage || 0);
+            const timeDelta = (currentTime - (this.lastCpuCheck || currentTime)) / 1000; // seconds
 
             this.lastCpuUsage = currentUsage;
             this.lastCpuCheck = currentTime;
 
-            // تعداد هسته‌های CPU
-            const numCPUs = os.cpus().length;
-
-            // درصد مصرف CPU
-            const cpuPercent = (usageDelta / 1e9 / timeDelta / numCPUs) * 100;
-
-            return parseFloat(cpuPercent.toFixed(2));
+            if (timeDelta === 0) return 0;
+            return parseFloat(((usageDelta / 1000) / timeDelta).toFixed(2)); // %
         } catch (err) {
             console.error('Failed to read CPU info:', err);
-            return 0;
+            return -1;
         }
 
     }

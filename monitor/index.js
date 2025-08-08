@@ -3,15 +3,16 @@ const app = express();
 const httpServer = require('http').Server(app);
 const {Server} = require('socket.io');
 const { io } = require("socket.io-client");
+const axios = require('axios')
 
 app.use(express.static('www'));
 
 // TODO: update these if you used different ports!
 const servers = [
     // { name: "computer", url: `http://localhost`, port: 5005, status: "#cccccc", scoreTrend: [] }, // you can also monitor your local machine
-    { name: "server-01", url: `http://localhost`, port: 5001, status: "#cccccc", scoreTrend: [0] },
-    { name: "server-02", url: `http://localhost`, port: 5002, status: "#cccccc", scoreTrend: [0] },
-    { name: "server-03", url: `http://localhost`, port: 5003, status: "#cccccc", scoreTrend: [0] }
+    { name: "server-01", url: `http://localhost`, httpPort: 4001, wsPort: 5001, status: "#cccccc", scoreTrend: [0] },
+    { name: "server-02", url: `http://localhost`, httpPort: 4001, wsPort: 5001, status: "#cccccc", scoreTrend: [0] },
+    { name: "server-03", url: `http://localhost`, httpPort: 4001, wsPort: 5001, status: "#cccccc", scoreTrend: [0] }
 ];
 
 // ==================================================
@@ -19,7 +20,7 @@ const servers = [
 // ==================================================
 
 for (const server of servers) {
-    const agentSocket = io(server.url + ':' + server.port, { transports: ['websocket'] })
+    const agentSocket = io(server.url + ':' + server.wsPort, { transports: ['websocket'] })
     console.log('Server connected:', server.name);
     agentSocket.on('monitoring-stats', async (data) => {
         console.log('monitoring-stats', data);
@@ -66,7 +67,7 @@ for (const server of servers) {
     setInterval(async () => {
         const start = Date.now();
         try {
-            const res = await axios.get(server.url + ':' + server.port);
+            const res = await axios.get(server.url + ':' + server.httpPort);
             server.statusCode = res.status;
             server.latency = Date.now() - start;
         } catch (e) {
