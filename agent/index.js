@@ -1,4 +1,5 @@
-const fs = require('fs').promises;
+const fs = require('fs');
+const fsPromises = require('fs').promises;
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 
@@ -18,13 +19,13 @@ class Agent {
 
             // cgroup v1 paths
             if (fs.existsSync('/sys/fs/cgroup/memory/memory.usage_in_bytes')) {
-                usage = parseInt(await fs.readFile('/sys/fs/cgroup/memory/memory.usage_in_bytes', 'utf8'));
-                limit = parseInt(await fs.readFile('/sys/fs/cgroup/memory/memory.limit_in_bytes', 'utf8'));
+                usage = parseInt(await fsPromises.readFile('/sys/fs/cgroup/memory/memory.usage_in_bytes', 'utf8'));
+                limit = parseInt(await fsPromises.readFile('/sys/fs/cgroup/memory/memory.limit_in_bytes', 'utf8'));
             }
             // cgroup v2 paths
             else if (fs.existsSync('/sys/fs/cgroup/memory.current')) {
-                usage = parseInt(await fs.readFile('/sys/fs/cgroup/memory.current', 'utf8'));
-                limit = parseInt((await fs.readFile('/sys/fs/cgroup/memory.max', 'utf8')).trim());
+                usage = parseInt(await fsPromises.readFile('/sys/fs/cgroup/memory.current', 'utf8'));
+                limit = parseInt((await fsPromises.readFile('/sys/fs/cgroup/memory.max', 'utf8')).trim());
                 if (isNaN(limit)) {
                     // unlimited → use total system memory
                     limit = os.totalmem();
@@ -32,7 +33,7 @@ class Agent {
             } else {
                 return -1;
             }
-
+            console.log(`Memory usage: ${usage} / ${limit}`);
             return parseFloat(((usage / limit) * 100).toFixed(2));
         } catch (err) {
             console.error('Failed to read memory info:', err);
@@ -58,7 +59,7 @@ class Agent {
             }
             // cgroup v2
             else if (fs.existsSync('/sys/fs/cgroup/cpu.stat')) {
-                const statStr = await fs.readFile('/sys/fs/cgroup/cpu.stat', 'utf8');
+                const statStr = await fsPromises.readFile('/sys/fs/cgroup/cpu.stat', 'utf8');
                 const usageLine = statStr.split('\n').find(line => line.startsWith('usage_usec'));
                 currentUsage = parseInt(usageLine.split(' ')[1]);
             } else {
